@@ -2,6 +2,9 @@ import { useState, useEffect, createContext, useContext } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { User, Session } from '@supabase/supabase-js';
 
+// Set to false to enable real Google authentication and admin role checks
+const DISABLE_AUTH_FOR_TESTING = false;
+
 interface AuthContext {
   user: User | null;
   session: Session | null;
@@ -27,6 +30,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   const checkAdmin = async (userId: string) => {
+    if (DISABLE_AUTH_FOR_TESTING) {
+      setIsAdmin(true);
+      return;
+    }
     const { data } = await supabase
       .from('user_roles')
       .select('role')
@@ -37,6 +44,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   useEffect(() => {
+    if (DISABLE_AUTH_FOR_TESTING) {
+      // Pretend we have an admin user for local/testing purposes
+      setUser({} as User);
+      setSession({} as Session);
+      setIsAdmin(true);
+      setLoading(false);
+      return;
+    }
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         setSession(session);
@@ -63,6 +79,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const signOut = async () => {
+    if (DISABLE_AUTH_FOR_TESTING) {
+      // No-op while auth is disabled
+      return;
+    }
     await supabase.auth.signOut();
     setIsAdmin(false);
   };

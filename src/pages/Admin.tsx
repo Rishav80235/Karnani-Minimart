@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -40,6 +40,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Pencil, Trash2, Package, ShoppingCart, IndianRupee, TrendingUp, Tags } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
+import { importProductsFromExcel, importProductsFromFile } from '@/lib/excelImport';
+import { importStaticProductsToSupabase } from '@/lib/importStaticProducts';
 
 const Admin = () => {
   const { user, isAdmin, loading } = useAuth();
@@ -47,6 +50,7 @@ const Admin = () => {
   const { data: categories = [], isLoading: categoriesLoading } = useCategories();
   const { createProduct, updateProduct, deleteProduct } = useProductMutations();
   const { createCategory, updateCategory, deleteCategory } = useCategoryMutations();
+  const qc = useQueryClient();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -57,12 +61,15 @@ const Admin = () => {
     price: '',
     unit: '',
     image: '',
+    images: '',
     description: '',
   });
 
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [categoryName, setCategoryName] = useState('');
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   if (loading) {
     return (
@@ -110,6 +117,7 @@ const Admin = () => {
       price: '',
       unit: '',
       image: '',
+      images: '',
       description: '',
     });
     setDialogOpen(true);
@@ -124,9 +132,101 @@ const Admin = () => {
       price: String(p.price),
       unit: p.unit,
       image: p.image ?? '',
+      images: p.images && p.images.length > 0 ? p.images.join(', ') : '',
       description: p.description ?? '',
     });
     setDialogOpen(true);
+  };
+
+  const handleImportFromExcel = async () => {
+    if (importing) return;
+    if (
+      !confirm(
+        'Import products from the Excel price list? This will add new rows to the products table.',
+      )
+    )
+      return;
+    try {
+      setImporting(true);
+      const count = await importProductsFromExcel();
+      toast.success(`Imported ${count} product(s) from Excel`);
+      qc.invalidateQueries({ queryKey: ['products'] });
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : 'Failed to import products from Excel file',
+      );
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleFileImportClick = () => {
+    if (importing) return;
+    fileInputRef.current?.click();
+  };
+
+  const handleFileImportChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setImporting(true);
+      const count = await importProductsFromFile(file);
+      toast.success(`Imported ${count} product(s) from file`);
+      qc.invalidateQueries({ queryKey: ['products'] });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to import products from file',
+      );
+    } finally {
+      setImporting(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleImportStaticProducts = async () => {
+    if (importing) return;
+    if (
+      !confirm(
+        'Import all products from src/data/products.ts into Supabase? This will skip products that already exist.',
+      )
+    )
+      return;
+    try {
+      setImporting(true);
+      const result = await importStaticProductsToSupabase();
+      if (result.errors.length > 0) {
+        toast.warning(
+          `Imported ${result.imported}, skipped ${result.skipped}. ${result.errors.length} error(s). Check console.`,
+        );
+        console.error('Import errors:', result.errors);
+      } else {
+        toast.success(
+          `Imported ${result.imported} product(s), skipped ${result.skipped} existing.`,
+        );
+      }
+      qc.invalidateQueries({ queryKey: ['products'] });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to import static products',
+      );
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === 'string') {
+        setProductForm((prev) => ({ ...prev, image: result }));
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSaveProduct = async () => {
@@ -139,6 +239,12 @@ const Admin = () => {
       toast.error('Invalid price');
       return;
     }
+    const imageUrls = productForm.images
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    const imageValue =
+      imageUrls.length > 0 ? imageUrls.join(',') : productForm.image || undefined;
     try {
       if (editingProduct) {
         await updateProduct.mutateAsync({
@@ -148,7 +254,7 @@ const Admin = () => {
           category: productForm.category,
           price,
           unit: productForm.unit,
-          image: productForm.image || undefined,
+          image: imageValue || undefined,
           description: productForm.description || undefined,
         });
         toast.success('Product updated');
@@ -159,7 +265,7 @@ const Admin = () => {
           category: productForm.category,
           price,
           unit: productForm.unit,
-          image: productForm.image || undefined,
+          image: imageValue || undefined,
           description: productForm.description || undefined,
         });
         toast.success('Product added');
@@ -262,7 +368,33 @@ const Admin = () => {
             </TabsList>
 
             <TabsContent value="products">
-              <div className="mb-4 flex justify-end">
+              <div className="mb-4 flex justify-between gap-2">
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleImportFromExcel}
+                    disabled={importing}
+                  >
+                    Import Excel asset
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleFileImportClick}
+                    disabled={importing}
+                  >
+                    Import file
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleImportStaticProducts}
+                    disabled={importing}
+                  >
+                    Import static products
+                  </Button>
+                </div>
                 <Button onClick={openAddProduct}>
                   <Plus className="mr-1.5 h-4 w-4" />
                   Add Product
@@ -293,7 +425,14 @@ const Admin = () => {
                               {p.category}
                             </span>
                           </TableCell>
-                          <TableCell>₹{p.price}</TableCell>
+                          <TableCell>
+                            {p.mrp && p.mrp > p.price && (
+                              <span className="mr-1 text-xs text-muted-foreground line-through">
+                                ₹{p.mrp}
+                              </span>
+                            )}
+                            <span>₹{p.price}</span>
+                          </TableCell>
                           <TableCell>{p.unit}</TableCell>
                           <TableCell className="text-right">
                             <Button
@@ -374,6 +513,13 @@ const Admin = () => {
       <Footer />
 
       {/* Product Add/Edit Dialog */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xlsx,.xls,.csv,.json,application/json,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+        className="hidden"
+        onChange={handleFileImportChange}
+      />
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -438,13 +584,33 @@ const Admin = () => {
                 />
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Image URL (optional)</Label>
+                <Input
+                  value={productForm.image}
+                  onChange={(e) => setProductForm({ ...productForm, image: e.target.value })}
+                  className="mt-1"
+                  placeholder="https://... (or use file picker)"
+                />
+              </div>
+              <div>
+                <Label>Upload Image</Label>
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageFileChange}
+                  className="mt-1"
+                />
+              </div>
+            </div>
             <div>
-              <Label>Image URL</Label>
+              <Label>Additional image URLs (comma separated)</Label>
               <Input
-                value={productForm.image}
-                onChange={(e) => setProductForm({ ...productForm, image: e.target.value })}
+                value={productForm.images}
+                onChange={(e) => setProductForm({ ...productForm, images: e.target.value })}
                 className="mt-1"
-                placeholder="https://..."
+                placeholder="https://img1..., https://img2..."
               />
             </div>
             <div>

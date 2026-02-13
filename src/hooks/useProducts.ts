@@ -8,7 +8,7 @@ export interface Category {
   sort_order: number;
 }
 
-function toProduct(row: {
+interface ProductRow {
   id: string;
   name: string;
   brand: string;
@@ -17,7 +17,20 @@ function toProduct(row: {
   unit: string;
   image: string | null;
   description: string | null;
-}): Product {
+  mrp?: number;
+  images?: string[];
+}
+
+function toProduct(row: ProductRow): Product {
+  const rawImage = row.image ?? null;
+  const images =
+    rawImage && rawImage.length > 0
+      ? rawImage
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+      : undefined;
+
   return {
     id: row.id,
     name: row.name,
@@ -25,35 +38,55 @@ function toProduct(row: {
     category: row.category,
     price: Number(row.price),
     unit: row.unit,
-    image: row.image ?? undefined,
+    image: images?.[0],
     description: row.description ?? undefined,
+    mrp: row.mrp ?? undefined,
+    images: images ?? row.images ?? undefined,
   };
 }
 
+/** Load all products from Supabase. */
 export async function fetchProducts(): Promise<Product[]> {
   const { data, error } = await supabase
     .from('products')
     .select('*')
     .order('name');
-  if (error) throw error;
+  if (error) {
+    console.error('[fetchProducts] Supabase error:', error.message, error.details);
+    throw error;
+  }
   return (data ?? []).map(toProduct);
 }
 
+/** Load all categories from Supabase. */
 export async function fetchCategories(): Promise<Category[]> {
   const { data, error } = await supabase
     .from('categories')
     .select('*')
     .order('sort_order');
-  if (error) throw error;
-  return data ?? [];
+  if (error) {
+    console.error('[fetchCategories] Supabase error:', error.message, error.details);
+    throw error;
+  }
+  return (data ?? []) as Category[];
 }
 
 export function useProducts() {
-  return useQuery({ queryKey: ['products'], queryFn: fetchProducts });
+  return useQuery({
+    queryKey: ['products'],
+    queryFn: fetchProducts,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
 }
 
 export function useCategories() {
-  return useQuery({ queryKey: ['categories'], queryFn: fetchCategories });
+  return useQuery({
+    queryKey: ['categories'],
+    queryFn: fetchCategories,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
 }
 
 export function useProductMutations() {

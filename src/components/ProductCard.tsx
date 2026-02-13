@@ -2,6 +2,7 @@ import type { Product } from '@/data/products';
 import { useCartStore } from '@/store/cartStore';
 import { Button } from '@/components/ui/button';
 import { ShoppingCart, Plus, Minus } from 'lucide-react';
+import { getProductImages } from '@/lib/productImages';
 
 interface ProductCardProps {
   product: Product;
@@ -11,16 +12,40 @@ interface ProductCardProps {
 const ProductCard = ({ product, onViewDetails }: ProductCardProps) => {
   const { items, addItem, updateQuantity, removeItem } = useCartStore();
   const cartItem = items.find((i) => i.product.id === product.id);
+  const assetsImages = getProductImages(product);
 
   return (
     <div
       className="group cursor-pointer rounded-xl border bg-card p-4 transition-all hover:shadow-lg hover:border-primary/30"
       onClick={() => onViewDetails(product)}
     >
-      <div className="mb-3 flex h-32 items-center justify-center rounded-lg bg-secondary">
-        <span className="text-3xl font-heading font-bold text-primary/30">
-          {product.brand.charAt(0)}
-        </span>
+      <div className="mb-3 flex h-32 items-center justify-center rounded-lg bg-secondary overflow-hidden">
+        {product.images && product.images.length > 0 ? (
+          <img
+            src={product.images[0]}
+            alt={product.name}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+        ) : product.image ? (
+          <img
+            src={product.image}
+            alt={product.name}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+        ) : assetsImages.length > 0 ? (
+          <img
+            src={assetsImages[0]}
+            alt={product.name}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <span className="text-3xl font-heading font-bold text-primary/30">
+            {product.brand.charAt(0)}
+          </span>
+        )}
       </div>
 
       <div className="space-y-1.5">
@@ -30,9 +55,21 @@ const ProductCard = ({ product, onViewDetails }: ProductCardProps) => {
         <h3 className="font-body text-sm font-semibold text-foreground leading-snug line-clamp-2">
           {product.name}
         </h3>
-        <p className="text-xs text-muted-foreground">{product.brand} · {product.unit}</p>
+        <p className="text-xs text-muted-foreground">
+          {product.brand} · {product.unit}
+        </p>
         <div className="flex items-center justify-between pt-1">
-          <span className="text-lg font-bold text-foreground">₹{product.price}</span>
+          <div className="flex flex-col">
+            <div className="flex items-baseline gap-1">
+              {product.mrp && product.mrp > product.price && (
+                <span className="text-xs text-muted-foreground line-through">
+                  ₹{product.mrp}
+                </span>
+              )}
+              <span className="text-lg font-bold text-foreground">₹{product.price}</span>
+            </div>
+            <span className="text-[10px] text-muted-foreground">per {product.unit}</span>
+          </div>
           
           {cartItem ? (
             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>

@@ -4,8 +4,13 @@ export interface Product {
   brand: string;
   category: string;
   price: number;
+  /** Optional maximum retail price (shown struck-through when > price) */
+  mrp?: number;
   unit: string;
+  /** Primary image URL (used when images is not provided) */
   image?: string;
+  /** Optional list of image URLs for gallery view */
+  images?: string[];
   description?: string;
 }
 
