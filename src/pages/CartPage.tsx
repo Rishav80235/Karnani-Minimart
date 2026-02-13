@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useCartStore } from '@/store/cartStore';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -14,14 +14,43 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { useAuth } from '@/hooks/useAuth';
 
 const CartPage = () => {
   const { items, updateQuantity, removeItem, clearCart, totalPrice } = useCartStore();
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [customerName, setCustomerName] = useState('');
+   const { user, loading } = useAuth();
+   const navigate = useNavigate();
+   const location = useLocation();
+
+   // If user is logged in, prefill name from email once
+   useEffect(() => {
+     if (user && !customerName) {
+       const email = user.email ?? '';
+       if (email) {
+         const base = email.split('@')[0];
+         setCustomerName(base);
+       }
+     }
+   }, [user, customerName]);
+
+   const openCheckout = () => {
+     if (loading) return;
+     if (!user) {
+       // Remember where we came from so we can redirect back after login
+       navigate(`/login?redirect=${encodeURIComponent(location.pathname)}`);
+       return;
+     }
+     setCheckoutOpen(true);
+   };
 
   const handleWhatsAppCheckout = () => {
     if (!customerName.trim()) return;
+    if (!user) {
+      navigate(`/login?redirect=${encodeURIComponent(location.pathname)}`);
+      return;
+    }
 
     const itemsList = items
       .map(
@@ -132,7 +161,7 @@ const CartPage = () => {
                 <Button
                   className="mt-4 w-full"
                   size="lg"
-                  onClick={() => setCheckoutOpen(true)}
+                  onClick={openCheckout}
                 >
                   <MessageCircle className="mr-2 h-4 w-4" />
                   Place Order via WhatsApp

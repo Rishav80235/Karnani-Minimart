@@ -1,0 +1,9 @@
+{
+  "//": "Vercel configuration for Vite + React single-page app routing",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

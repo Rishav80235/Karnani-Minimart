@@ -2,7 +2,7 @@ import type { Product } from '@/data/products';
 
 // Import all images from the listing folder eagerly so we can match by name.
 // Assumes filenames (without extension) match the product name (case-insensitive).
-const modules = import.meta.glob('@/assets/lisintng/*.{png,jpg,jpeg,webp}', {
+const modules = import.meta.glob('@/assets/Images/*.{png,jpg,jpeg,webp}', {
   eager: true,
 });
 

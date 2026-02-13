@@ -1,11 +1,19 @@
-import { Link, useLocation } from 'react-router-dom';
-import { ShoppingCart, User, LayoutDashboard, LogIn } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { ShoppingCart, User, LayoutDashboard, LogIn, LogOut } from 'lucide-react';
 import { useCartStore } from '@/store/cartStore';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/hooks/useAuth';
 
 const Header = () => {
   const location = useLocation();
   const totalItems = useCartStore((s) => s.totalItems());
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/');
+  };
 
   return (
     <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
@@ -41,16 +49,27 @@ const Header = () => {
               <span className="hidden sm:inline">Admin</span>
             </Link>
           </Button>
-          <Button
-            variant={location.pathname === '/login' ? 'secondary' : 'ghost'}
-            size="sm"
-            asChild
-          >
-            <Link to="/login">
-              <LogIn className="mr-1.5 h-4 w-4" />
-              <span className="hidden sm:inline">Login</span>
-            </Link>
-          </Button>
+          {user ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLogout}
+            >
+              <LogOut className="mr-1.5 h-4 w-4" />
+              <span className="hidden sm:inline">Logout</span>
+            </Button>
+          ) : (
+            <Button
+              variant={location.pathname === '/login' ? 'secondary' : 'ghost'}
+              size="sm"
+              asChild
+            >
+              <Link to="/login">
+                <LogIn className="mr-1.5 h-4 w-4" />
+                <span className="hidden sm:inline">Login</span>
+              </Link>
+            </Button>
+          )}
           <Button variant="ghost" size="sm" asChild>
             <Link to="/cart" className="relative">
               <ShoppingCart className="h-4 w-4" />

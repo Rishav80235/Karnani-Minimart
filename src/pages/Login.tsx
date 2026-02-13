@@ -53,12 +53,15 @@ const Login = () => {
 
           {user ? (
             <div className="space-y-3">
-              {isAdmin && (
-                <Button className="w-full" size="lg" onClick={() => navigate('/admin')}>
-                  Go to Admin Panel
-                </Button>
-              )}
-              <Button className="w-full" size="lg" variant="outline" onClick={signOut}>
+              <Button
+                className="w-full"
+                size="lg"
+                variant="outline"
+                onClick={async () => {
+                  await signOut();
+                  navigate('/');
+                }}
+              >
                 <LogOut className="mr-2 h-5 w-5" />
                 Sign Out
               </Button>

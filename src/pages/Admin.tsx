@@ -1,5 +1,4 @@
 import { useState, useRef } from 'react';
-import { Navigate } from 'react-router-dom';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import type { Product } from '@/data/products';
@@ -38,14 +37,12 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Pencil, Trash2, Package, ShoppingCart, IndianRupee, TrendingUp, Tags } from 'lucide-react';
-import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { importProductsFromExcel, importProductsFromFile } from '@/lib/excelImport';
 import { importStaticProductsToSupabase } from '@/lib/importStaticProducts';
 
 const Admin = () => {
-  const { user, isAdmin, loading } = useAuth();
   const { data: productList = [], isLoading: productsLoading } = useProducts();
   const { data: categories = [], isLoading: categoriesLoading } = useCategories();
   const { createProduct, updateProduct, deleteProduct } = useProductMutations();
@@ -70,18 +67,6 @@ const Admin = () => {
   const [categoryName, setCategoryName] = useState('');
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    );
-  }
-
-  if (!user || !isAdmin) {
-    return <Navigate to="/login" replace />;
-  }
 
   const stats = [
     { label: 'Total Products', value: productList.length, icon: Package, color: 'text-primary' },
@@ -217,16 +202,31 @@ const Admin = () => {
   };
 
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result === 'string') {
-        setProductForm((prev) => ({ ...prev, image: result }));
-      }
-    };
-    reader.readAsDataURL(file);
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+
+    const readers = files.map(
+      (file) =>
+        new Promise<string | null>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result;
+            resolve(typeof result === 'string' ? result : null);
+          };
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(file);
+        }),
+    );
+
+    Promise.all(readers).then((results) => {
+      const images = results.filter((r): r is string => Boolean(r));
+      if (!images.length) return;
+      setProductForm((prev) => ({
+        ...prev,
+        image: images[0],
+        images: images.join(','),
+      }));
+    });
   };
 
   const handleSaveProduct = async () => {
@@ -584,34 +584,18 @@ const Admin = () => {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Image URL (optional)</Label>
-                <Input
-                  value={productForm.image}
-                  onChange={(e) => setProductForm({ ...productForm, image: e.target.value })}
-                  className="mt-1"
-                  placeholder="https://... (or use file picker)"
-                />
-              </div>
-              <div>
-                <Label>Upload Image</Label>
-                <Input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageFileChange}
-                  className="mt-1"
-                />
-              </div>
-            </div>
             <div>
-              <Label>Additional image URLs (comma separated)</Label>
+              <Label>Upload Images</Label>
               <Input
-                value={productForm.images}
-                onChange={(e) => setProductForm({ ...productForm, images: e.target.value })}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleImageFileChange}
                 className="mt-1"
-                placeholder="https://img1..., https://img2..."
               />
+              <p className="mt-1 text-xs text-muted-foreground">
+                You can select multiple images; the first will be used as the main image.
+              </p>
             </div>
             <div>
               <Label>Description</Label>
@@ -633,11 +617,15 @@ const Admin = () => {
               disabled={
                 createProduct.isPending ||
                 updateProduct.isPending ||
-                !productForm.name ||
-                !productForm.brand ||
-                !productForm.category ||
-                !productForm.price ||
-                !productForm.unit
+                (!editingProduct &&
+                  (
+                    !productForm.name ||
+                    !productForm.brand ||
+                    !productForm.category ||
+                    !productForm.price ||
+                    !productForm.unit
+                  )
+                )
               }
             >
               {editingProduct ? 'Update' : 'Add'} Product
